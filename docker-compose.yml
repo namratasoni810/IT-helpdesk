@@ -1,0 +1,26 @@
+version: "3.9"
+
+# Local Postgres that stands in for Databricks Lakebase.
+# The app connects via the DATABASE_URL env var, so repointing at Lakebase
+# later is just a connection-string change -- no code edits required.
+services:
+  postgres:
+    image: postgres:16
+    container_name: helpdesk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: helpdesk
+      POSTGRES_DB: helpdesk
+    ports:
+      - "5432:5432"
+    volumes:
+      - helpdesk_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  helpdesk_pgdata:

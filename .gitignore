@@ -1,0 +1,28 @@
+# Dependencies
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Secrets / local config
+.env
+.env.local
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Postgres data volume (if running without Docker)
+pgdata/
+pgpass_init.txt
+
+# Portable Postgres binaries (native fallback when Docker is unavailable)
+pgsql_bin/
+pgsql.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

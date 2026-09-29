@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+anthropic==0.42.0
+streamlit==1.41.1
+requests==2.32.3
