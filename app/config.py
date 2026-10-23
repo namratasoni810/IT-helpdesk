@@ -28,9 +28,10 @@ def _get_bool(name: str, default: bool = False) -> bool:
 @dataclass(frozen=True)
 class Settings:
     # --- Database -----------------------------------------------------------
-    # Plain Postgres connection string. Swap this for the Lakebase endpoint
-    # when you migrate; nothing else in the codebase needs to change.
+    # Local development uses DATABASE_URL. Databricks Apps injects the
+    # Lakebase connection fields and endpoint resource at runtime.
     database_url: str
+    lakebase_endpoint: str | None
 
     # --- Classification (Anthropic) -----------------------------------------
     anthropic_api_key: str
@@ -55,6 +56,7 @@ def get_settings() -> Settings:
             "DATABASE_URL",
             "postgresql://helpdesk:helpdesk@localhost:5432/helpdesk",
         ),
+        lakebase_endpoint=os.getenv("LAKEBASE_ENDPOINT"),
         anthropic_api_key=api_key,
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
         mock_mode=not api_key,

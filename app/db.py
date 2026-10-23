@@ -8,6 +8,7 @@ vanilla Postgres SQL and will run unchanged against Databricks Lakebase.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional
 
@@ -15,9 +16,45 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+
+class _LakebaseConnectionPool(pool.ThreadedConnectionPool):
+    """Refresh the Lakebase OAuth credential whenever the pool opens a connection."""
+
+    def __init__(self, minconn: int, maxconn: int, settings: Settings) -> None:
+        from databricks.sdk import WorkspaceClient
+
+        self._workspace_client = WorkspaceClient()
+        self._endpoint = settings.lakebase_endpoint
+        self._original_password = os.environ.get("PGPASSWORD")
+        super().__init__(
+            minconn=minconn,
+            maxconn=maxconn,
+            host=os.environ["PGHOST"],
+            port=os.environ.get("PGPORT", "5432"),
+            dbname=os.environ["PGDATABASE"],
+            user=os.environ["PGUSER"],
+            sslmode=os.environ.get("PGSSLMODE", "require"),
+            application_name=os.environ.get("PGAPPNAME", "it-helpdesk"),
+            options="-c search_path=helpdesk",
+        )
+
+    def _connect(self, key: Any = None) -> Any:
+        credential = self._workspace_client.postgres.generate_database_credential(
+            endpoint=self._endpoint
+        )
+        self._kwargs["password"] = credential.token
+        try:
+            return super()._connect(key)
+        finally:
+            if self._original_password is None:
+                self._kwargs.pop("password", None)
+            else:
+                self._kwargs["password"] = self._original_password
+
 
 # --- Schema -----------------------------------------------------------------
 # Created idempotently on startup. Extend this list when you add tables.
@@ -74,17 +111,30 @@ def init_pool(minconn: int = 1, maxconn: int = 10) -> None:
 
     settings = get_settings()
     logger.info("Initialising Postgres connection pool")
-    _connection_pool = pool.ThreadedConnectionPool(
-        minconn=minconn,
-        maxconn=maxconn,
-        dsn=settings.database_url,
-    )
+    if settings.lakebase_endpoint:
+        required = ("PGHOST", "PGDATABASE", "PGUSER")
+        missing = [name for name in required if not os.getenv(name)]
+        if missing:
+            raise RuntimeError(
+                "Lakebase is configured, but Databricks did not provide "
+                f"required connection settings: {', '.join(missing)}. "
+                "Check the app's attached Lakebase resource."
+            )
+        _connection_pool = _LakebaseConnectionPool(minconn, maxconn, settings)
+    else:
+        _connection_pool = pool.ThreadedConnectionPool(
+            minconn=minconn,
+            maxconn=maxconn,
+            dsn=settings.database_url,
+        )
     init_schema()
 
 
 def init_schema() -> None:
     """Create tables/indexes if they don't already exist."""
     with get_cursor() as cur:
+        if get_settings().lakebase_endpoint:
+            cur.execute("CREATE SCHEMA IF NOT EXISTS helpdesk")
         for statement in SCHEMA_STATEMENTS:
             cur.execute(statement)
     logger.info("Schema is ready")

@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 anthropic==0.42.0
 streamlit==1.41.1
 requests==2.32.3
+databricks-sdk>=0.79.0,<1.0

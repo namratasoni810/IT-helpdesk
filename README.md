@@ -115,20 +115,29 @@ CREATE TABLE tickets (
 
 ## Migration to Databricks
 
-The prototype is structured so migration touches a small surface:
+The backend supports two database modes:
 
-1. **Lakebase (database)** — change `DATABASE_URL` in `.env` to the Lakebase
-   endpoint. `app/db.py` uses only standard Postgres SQL via `psycopg2`, so no
-   query changes are needed. If Lakebase prefers a pooled/managed connection,
-   only `init_pool()` changes.
-2. **Databricks Apps (hosting)** — `app/main.py` is a standard FastAPI app;
-   add an `app.yaml` and deploy as a Databricks App. The Streamlit frontend can
-   deploy as a second app or be replaced by the App's built-in UI.
-3. **Agent Bricks (classification)** — replace the body of
-   `classify_ticket()` in `app/classifier.py` with the Agent Bricks agent call.
-   Keep the `Classification` dataclass and function signature intact and
-   nothing else needs to change: `worker.py` and `main.py` only consume that
-   contract.
+1. **Local development** — `.env` supplies `DATABASE_URL` for local PostgreSQL.
+   Keep this file local; do not upload it or commit it.
+2. **Databricks Apps** — attach a Lakebase Autoscaling database resource to the
+   app using the resource key `postgres`. Databricks provides `PGHOST`,
+   `PGPORT`, `PGDATABASE`, `PGUSER`, `PGSSLMODE`, and `PGAPPNAME`. The root
+   `app.yaml` maps the `postgres` resource to `LAKEBASE_ENDPOINT`. The backend
+   uses the Databricks SDK app identity to get a short-lived Lakebase OAuth
+   credential whenever it opens a database connection; it does not use the
+   local `.env` URL in this mode.
+
+The backend creates its tables in a `helpdesk` schema in Lakebase. Deploy this
+repository as the **backend app**. The `app.yaml` command starts FastAPI on the
+port assigned by Databricks. After deployment, check `/health`, submit a test
+ticket, then verify it in the Lakebase project's Tables or SQL Editor under
+`helpdesk.tickets`.
+
+The Streamlit frontend still targets `localhost` and must be configured to use
+the deployed backend URL before it can be deployed as a separate app.
+Agent Bricks is also not connected yet. Replace the classifier implementation
+in `app/classifier.py` with a call to a deployed agent while preserving the
+`Classification` fields (`category`, `priority`, and `suggested_fix`).
 
 ## Notes & trade-offs
 
