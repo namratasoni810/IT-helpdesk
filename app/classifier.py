@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict
@@ -171,6 +172,47 @@ def _call_anthropic(issue_text: str) -> Dict[str, Any]:
     )
 
 
+def _call_agent(issue_text: str) -> Dict[str, Any]:
+    """Call the deployed Agent Bricks app and parse its classification."""
+    import uuid
+
+    import requests
+    from databricks.sdk import WorkspaceClient
+
+    w = WorkspaceClient()
+    app_url = w.apps.get(os.environ["AGENT_APP_NAME"]).url
+    resp = requests.post(
+        f"{app_url.rstrip('/')}/api/invocations",
+        headers={**w.config.authenticate(), "Content-Type": "application/json"},
+        timeout=60,
+        json={
+            "id": str(uuid.uuid4()),
+            "session_id": str(uuid.uuid4()),
+            "input": [{"role": "user", "content": issue_text}],
+        },
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    logger.debug("Agent Bricks raw response: %s", data)
+
+    messages = data["output"]["output"]
+    for message in reversed(messages):
+        if message.get("type") != "ai":
+            continue
+
+        content = message.get("content")
+        if isinstance(content, list):
+            content = "".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and isinstance(block.get("text"), str)
+            )
+        if isinstance(content, str) and content.strip():
+            return _extract_json(content)
+
+    raise ValueError("Agent Bricks response did not contain an assistant message")
+
+
 # ---------------------------------------------------------------------------
 # Public API -- this is the swap point for Agent Bricks
 # ---------------------------------------------------------------------------
@@ -186,12 +228,13 @@ def classify_ticket(issue_text: str) -> Classification:
         return Classification("software", "low", "Ask the user for more detail.")
 
     settings = get_settings()
-    if settings.mock_mode:
-        logger.debug("Classifier in mock mode (no ANTHROPIC_API_KEY)")
+    mode = os.getenv("CLASSIFIER_MODE", "").strip().lower()
+    if mode == "mock" or (mode != "agent" and settings.mock_mode):
+        logger.debug("Classifier in mock mode")
         return _mock_classify(issue_text)
 
     try:
-        raw = _call_anthropic(issue_text)
+        raw = _call_agent(issue_text) if mode == "agent" else _call_anthropic(issue_text)
         return _normalise(raw)
     except Exception as exc:  # noqa: BLE001 - fail soft, keep the worker alive
         # Never let a classifier hiccup kill the background worker. The ticket
@@ -205,6 +248,7 @@ def classify_ticket_safe(issue_text: str) -> Classification:
     try:
         return classify_ticket(issue_text)
     except Exception:  # noqa: BLE001
+        logger.exception("Safe classification failed; triaging manually")
         return Classification(
             "software",
             "medium",

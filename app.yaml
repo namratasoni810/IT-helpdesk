@@ -4,3 +4,7 @@ command:
 env:
   - name: LAKEBASE_ENDPOINT
     valueFrom: postgres
+  - name: CLASSIFIER_MODE
+    value: "agent"
+  - name: AGENT_APP_NAME
+    value: "agent-bricks-it-helpdesk-agent"

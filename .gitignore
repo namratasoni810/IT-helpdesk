@@ -1,5 +1,6 @@
 # Dependencies
 .venv/
+.databricks/
 venv/
 __pycache__/
 *.py[cod]
