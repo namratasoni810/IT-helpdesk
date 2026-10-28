@@ -7,6 +7,7 @@ env:
   - name: API_PORT
     value: "8001"
   - name: CLASSIFIER_MODE
-    value: "agent"
-  - name: AGENT_APP_NAME
-    valueFrom: agent_bricks
+    value: "mock"
+  # Re-enable after adding the Agent Bricks app as a resource.
+  # - name: AGENT_APP_NAME
+  #   valueFrom: agent_bricks
