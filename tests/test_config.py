@@ -17,6 +17,7 @@ class SettingsTests(unittest.TestCase):
             {
                 "ANTHROPIC_API_KEY": "",
                 "CLASSIFIER_MODE": "agent",
+                "AGENT_APP_NAME": "test-agent",
                 "API_PORT": "8001",
                 "HELPDESK_API_URL": "",
             },
@@ -25,7 +26,21 @@ class SettingsTests(unittest.TestCase):
             settings = get_settings()
 
         self.assertEqual(settings.classifier_mode, "agent")
+        self.assertEqual(settings.agent_app_name, "test-agent")
         self.assertEqual(settings.api_base_url, "http://127.0.0.1:8001")
+
+    def test_agent_mode_requires_app_resource(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY": "",
+                "CLASSIFIER_MODE": "agent",
+                "AGENT_APP_NAME": "",
+            },
+        ):
+            get_settings.cache_clear()
+            with self.assertRaisesRegex(ValueError, "AGENT_APP_NAME is required"):
+                get_settings()
 
     def test_api_url_can_be_overridden(self) -> None:
         with patch.dict(

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict
@@ -179,8 +178,9 @@ def _call_agent(issue_text: str) -> Dict[str, Any]:
     import requests
     from databricks.sdk import WorkspaceClient
 
+    settings = get_settings()
     w = WorkspaceClient()
-    app_url = w.apps.get(os.environ["AGENT_APP_NAME"]).url
+    app_url = w.apps.get(settings.agent_app_name).url
     resp = requests.post(
         f"{app_url.rstrip('/')}/api/invocations",
         headers={**w.config.authenticate(), "Content-Type": "application/json"},
@@ -227,8 +227,8 @@ def classify_ticket(issue_text: str) -> Classification:
         return Classification("software", "low", "Ask the user for more detail.")
 
     settings = get_settings()
-    mode = os.getenv("CLASSIFIER_MODE", "").strip().lower()
-    if mode == "mock" or (mode != "agent" and settings.mock_mode):
+    mode = settings.classifier_mode
+    if mode == "mock":
         logger.debug("Classifier in mock mode")
         return _mock_classify(issue_text)
 

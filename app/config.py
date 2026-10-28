@@ -37,9 +37,7 @@ class Settings:
     anthropic_api_key: str
     anthropic_model: str
     classifier_mode: str
-    # True when no API key is configured -> classifier returns deterministic
-    # mock results so the whole pipeline is testable offline.
-    mock_mode: bool
+    agent_app_name: str
 
     # --- Worker --------------------------------------------------------------
     worker_poll_interval: float
@@ -54,14 +52,30 @@ class Settings:
 def get_settings() -> Settings:
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     requested_mode = os.getenv("CLASSIFIER_MODE", "").strip().lower()
+    if requested_mode not in {"", "agent", "anthropic", "mock"}:
+        raise ValueError(
+            "CLASSIFIER_MODE must be 'agent', 'anthropic', or 'mock'."
+        )
+    agent_app_name = os.getenv("AGENT_APP_NAME", "").strip()
+    if requested_mode == "agent" and not agent_app_name:
+        raise ValueError(
+            "AGENT_APP_NAME is required when CLASSIFIER_MODE is 'agent'. "
+            "Add the Agent Bricks app as a Databricks Apps resource."
+        )
+    if requested_mode == "anthropic" and not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY is required when CLASSIFIER_MODE is 'anthropic'."
+        )
     if requested_mode == "agent":
         classifier_mode = "agent"
-    elif requested_mode == "anthropic" and api_key:
+    elif requested_mode == "anthropic":
         classifier_mode = "anthropic"
-    elif requested_mode == "mock" or not api_key:
+    elif requested_mode == "mock":
         classifier_mode = "mock"
-    else:
+    elif api_key:
         classifier_mode = "anthropic"
+    else:
+        classifier_mode = "mock"
     api_port = int(os.getenv("API_PORT", "8000"))
     api_base_url = (
         os.getenv("HELPDESK_API_URL") or f"http://127.0.0.1:{api_port}"
@@ -75,7 +89,7 @@ def get_settings() -> Settings:
         anthropic_api_key=api_key,
         anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
         classifier_mode=classifier_mode,
-        mock_mode=not api_key,
+        agent_app_name=agent_app_name,
         worker_poll_interval=float(os.getenv("WORKER_POLL_INTERVAL", "5")),
         api_port=api_port,
         streamlit_port=int(os.getenv("STREAMLIT_PORT", "8501")),

@@ -42,13 +42,12 @@ application/
             └── 2_Ticket_Queue.py      # IT staff dashboard
 ```
 
-## Prerequisites
+## Local development prerequisites
 
-- **Python 3.12** — installed in this workspace at
-  `%LOCALAPPDATA%\Programs\Python\Python312\python.exe`
+- Python 3.11 or newer
 - **Docker Desktop** — for Postgres
-- An **Anthropic API key** — *optional*. Without one the classifier runs in
-  deterministic **mock mode** so you can test the whole flow with no API spend.
+- An **Anthropic API key** is optional. Without one and without an explicit
+  classifier mode, the classifier uses deterministic mock results.
 
 ## Setup
 
@@ -59,8 +58,9 @@ cd C:\Users\testuser\Desktop\IT-helpdesk
 pip install -r requirements.txt
 
 # 2. Configure
-Copy-Item .env.example .env
-#   then edit .env and paste your Anthropic key (or leave it blank for mock mode)
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+#   Leave CLASSIFIER_MODE blank for mock mode, or set CLASSIFIER_MODE=anthropic
+#   and add your Anthropic key.
 
 # 3. Start Postgres
 docker compose up -d
@@ -127,22 +127,36 @@ The backend supports two database modes:
    local `.env` URL in this mode.
 
 The backend creates its tables in a `helpdesk` schema in Lakebase. Deploy this
-repository as a **single Databricks App**. The `run_app.py` entrypoint starts
+repository as a **separate Databricks App** from your existing Agent Bricks
+agent app. Do not replace the Agent Bricks app with this project: the helpdesk
+app invokes it for ticket classification. The `run_app.py` entrypoint starts
 FastAPI on the internal `API_PORT` (8001 in `app.yaml`) and Streamlit on the
 public port assigned through `DATABRICKS_APP_PORT`. The Streamlit UI calls the
 internal API at `HELPDESK_API_URL` if set, otherwise at
 `http://127.0.0.1:<API_PORT>`. The app URL opens the ticket UI; `/docs` is not
 the public API page in this setup.
 
-The app's `postgres` resource must be attached to a Lakebase database, and its
-`AGENT_APP_NAME` must identify a deployed Agent Bricks app accessible to the
-Databricks App identity. The deployed `app.yaml` selects Agent Bricks
-classification. For local development, `CLASSIFIER_MODE` can be `mock` (no
-external model calls) or `anthropic` (requires `ANTHROPIC_API_KEY`).
+For the new helpdesk app, add these under **App resources** in the Databricks
+Apps UI:
 
-After deployment, open the app's base URL, submit a test ticket, and view it
-in **Ticket Queue**. If the classifier is temporarily unavailable, the ticket
-stays `new` and the worker retries it on a later poll.
+1. A Lakebase Autoscaling database resource with key `postgres` and **Can
+   connect and create** permission.
+2. The existing Agent Bricks Databricks App with key `agent_bricks` and
+   **Can use** permission for the helpdesk app.
+
+The `postgres` key supplies the Lakebase endpoint path and database connection
+environment variables; `agent_bricks` supplies the agent app name. `app.yaml`
+maps these resources into the environment. The deployed helpdesk app selects
+Agent Bricks classification. For local development, `CLASSIFIER_MODE` can be
+`mock` (no external model calls) or `anthropic` (requires
+`ANTHROPIC_API_KEY`).
+
+After adding resources or changing permissions, redeploy the app. Check its
+deployment logs if startup fails, then open the app's base URL. A successful
+`/health` response from the internal FastAPI backend reports the selected
+classifier mode; the UI itself is served from the base URL. Submit a test ticket
+and view it in **Ticket Queue**. If the classifier is temporarily unavailable,
+the ticket stays `new` and the worker retries it on a later poll.
 
 ## Notes & trade-offs
 
