@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from app.config import get_settings  # noqa: E402
 
 settings = get_settings()
-API_BASE = f"http://localhost:{settings.api_port}"
+API_BASE = settings.api_base_url
 
 PRIORITY_BADGE = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 STATUS_BADGE = {"new": "🆕", "classified": "✅", "resolved": "✔️"}
@@ -23,17 +23,17 @@ st.set_page_config(page_title="Ticket Queue", page_icon="🗂️", layout="wide"
 st.title("🗂️ IT Ticket Queue")
 
 
-def fetch_tickets():
+def fetch_tickets() -> list[dict] | None:
     try:
         response = requests.get(f"{API_BASE}/tickets", timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as exc:
         st.error(f"Failed to load tickets: {exc}")
-        return []
+        return None
 
 
-def resolve_ticket(ticket_id: int):
+def resolve_ticket(ticket_id: int) -> bool:
     try:
         response = requests.post(
             f"{API_BASE}/tickets/{ticket_id}/resolve",
@@ -41,8 +41,10 @@ def resolve_ticket(ticket_id: int):
             timeout=10,
         )
         response.raise_for_status()
+        return True
     except requests.RequestException as exc:
         st.error(f"Failed to resolve ticket #{ticket_id}: {exc}")
+        return False
 
 
 # Refresh happens on every page load; the button below forces a reload.
@@ -56,15 +58,18 @@ with col1:
 with col2:
     if st.button("▶️ Classify new tickets now"):
         try:
-            result = requests.post(
-                f"{API_BASE}/worker/run", timeout=30
-            ).json()
+            response = requests.post(f"{API_BASE}/worker/run", timeout=30)
+            response.raise_for_status()
+            result = response.json()
             st.toast(f"Classified {result.get('processed', 0)} ticket(s)")
         except requests.RequestException as exc:
             st.error(f"Failed to trigger the worker: {exc}")
         st.session_state.refresh_nonce += 1
 
 tickets = fetch_tickets()
+
+if tickets is None:
+    st.stop()
 
 if not tickets:
     st.info("No tickets yet. Submit one from the 'Submit a Ticket' page.")
@@ -94,10 +99,10 @@ for ticket in tickets:
                     disabled=resolved,
                     type="primary" if not resolved else "secondary",
                 ):
-                    resolve_ticket(ticket["id"])
-                    st.toast(f"Ticket #{ticket['id']} marked resolved")
-                    st.session_state.refresh_nonce += 1
-                    st.rerun()
+                    if resolve_ticket(ticket["id"]):
+                        st.toast(f"Ticket #{ticket['id']} marked resolved")
+                        st.session_state.refresh_nonce += 1
+                        st.rerun()
 
         st.markdown(f"**Issue:** {ticket['issue_text']}")
 

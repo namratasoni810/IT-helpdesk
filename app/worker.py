@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 
 from app import classifier, db
 from app.config import get_settings
@@ -30,7 +29,14 @@ def process_new_tickets(batch_size: int = 50) -> int:
         if not ticket:
             continue
 
-        result = classifier.classify_ticket_safe(ticket["issue_text"])
+        try:
+            result = classifier.classify_ticket(ticket["issue_text"])
+        except Exception:
+            logger.exception(
+                "Could not classify ticket #%s; it will be retried",
+                ticket_id,
+            )
+            continue
         db.update_ticket_classification(
             ticket_id=ticket_id,
             category=result.category,

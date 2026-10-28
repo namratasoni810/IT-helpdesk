@@ -20,7 +20,7 @@ from app.config import get_settings  # noqa: E402
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 
-API_BASE = f"http://localhost:{settings.api_port}"
+API_BASE = settings.api_base_url
 REQUEST_TIMEOUT = 10
 
 
@@ -45,8 +45,8 @@ st.set_page_config(page_title="IT Helpdesk Assistant", page_icon="🎧", layout=
 
 st.title("🎧 IT Helpdesk Assistant")
 st.caption(
-    "Local prototype — FastAPI + Streamlit + Postgres. "
-    f"Classifier is in **{'mock' if settings.mock_mode else 'live Anthropic'}** mode."
+    "Submit and track IT support tickets. "
+    f"Classification uses **{settings.classifier_mode}** mode."
 )
 
 # The multipage layout is handled by files in app/frontend/pages/.

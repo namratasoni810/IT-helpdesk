@@ -5,9 +5,9 @@ calls ``classify_ticket(issue_text)`` and gets back a ``Classification`` --
 that contract is what lets you swap these internals for an Agent Bricks agent
 later without touching anything else.
 
-If no ``ANTHROPIC_API_KEY`` is configured the module runs in mock mode:
-deterministic keyword-based results, no network calls. That makes the full
-pipeline testable before you have API access.
+Select ``agent``, ``anthropic``, or ``mock`` with ``CLASSIFIER_MODE``. If the
+mode is unset and no ``ANTHROPIC_API_KEY`` is configured, deterministic
+keyword-based mock results keep the pipeline testable without network calls.
 """
 
 from __future__ import annotations
@@ -214,14 +214,13 @@ def _call_agent(issue_text: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Public API -- this is the swap point for Agent Bricks
+# Public API
 # ---------------------------------------------------------------------------
 
 def classify_ticket(issue_text: str) -> Classification:
     """Classify a single ticket.
 
-    Replace the body of this function with an Agent Bricks agent call when you
-    migrate; ``Classification`` and the function signature should stay as-is.
+    Select the configured classifier while keeping the result contract stable.
     """
     if not issue_text or not issue_text.strip():
         # Degenerate input still yields a valid, safe classification.

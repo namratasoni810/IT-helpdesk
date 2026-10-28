@@ -1,10 +1,9 @@
-# IT Helpdesk Assistant — Local Prototype
+# IT Helpdesk Assistant
 
-Employee ticket submission → automatic LLM classification → IT staff resolution queue.
+Employee ticket submission → automatic ticket classification → IT staff resolution queue.
 
-Built to migrate cleanly to Databricks: **Lakebase** (DB), **Databricks Apps** (hosting),
-**Agent Bricks** (classification). Nothing in the codebase is Databricks-specific yet —
-the migration points are called out below.
+Runs locally with Postgres or on **Databricks Lakebase**, with a combined
+**Streamlit + FastAPI Databricks App** and **Agent Bricks** classification.
 
 ## Architecture
 
@@ -15,8 +14,8 @@ the migration points are called out below.
 └──────────────┘              └───┬───────────┘              └──────────────┘
                                   │
                           ┌───────▼────────┐
-                          │  Worker thread │ ──► classifier.py ──► Anthropic API
-                          │  (polls 'new') │         (swap point for Agent Bricks)
+                          │  Worker thread │ ──► classifier.py ──► configured classifier
+                          │  (polls 'new') │      (Agent Bricks, Anthropic, or mock)
                           └────────────────┘
 ```
 
@@ -28,6 +27,7 @@ application/
 ├── requirements.txt
 ├── .env.example                # copy to .env
 ├── run_api.py                  # starts FastAPI (+ background worker thread)
+├── run_app.py                  # starts FastAPI and Streamlit as one app
 ├── run_worker.py               # optional: worker as a standalone process
 └── app/
     ├── config.py               # all env-var config in one place
@@ -54,7 +54,7 @@ application/
 
 ```powershell
 # 1. Create the virtual environment and install dependencies
-cd C:\Users\testuser\Desktop\application
+cd C:\Users\testuser\Desktop\IT-helpdesk
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
@@ -69,16 +69,15 @@ docker compose up -d
 ## Running
 
 ```powershell
-# Terminal 1 — backend (also starts the classification worker thread)
+# Start the API, worker, and Streamlit UI together
 .\.venv\Scripts\Activate.ps1
-python run_api.py
-#   API at  http://localhost:8000   docs at  http://localhost:8000/docs
-
-# Terminal 2 — UI
-.\.venv\Scripts\Activate.ps1
-streamlit run app/frontend/streamlit_app.py
-#   UI at  http://localhost:8501
+python run_app.py
 ```
+
+Open **http://localhost:8501**. The API listens on `API_PORT` (default `8000`),
+and Streamlit uses that local API address automatically. To run the UI and API
+separately, start `python run_api.py` and `streamlit run
+app/frontend/streamlit_app.py` in separate terminals.
 
 Then: submit a ticket on **Submit a Ticket**, and within a few seconds
 (`WORKER_POLL_INTERVAL`, default 5s) it appears as `classified` on
@@ -128,16 +127,22 @@ The backend supports two database modes:
    local `.env` URL in this mode.
 
 The backend creates its tables in a `helpdesk` schema in Lakebase. Deploy this
-repository as the **backend app**. The `app.yaml` command starts FastAPI on the
-port assigned by Databricks. After deployment, check `/health`, submit a test
-ticket, then verify it in the Lakebase project's Tables or SQL Editor under
-`helpdesk.tickets`.
+repository as a **single Databricks App**. The `run_app.py` entrypoint starts
+FastAPI on the internal `API_PORT` (8001 in `app.yaml`) and Streamlit on the
+public port assigned through `DATABRICKS_APP_PORT`. The Streamlit UI calls the
+internal API at `HELPDESK_API_URL` if set, otherwise at
+`http://127.0.0.1:<API_PORT>`. The app URL opens the ticket UI; `/docs` is not
+the public API page in this setup.
 
-The Streamlit frontend still targets `localhost` and must be configured to use
-the deployed backend URL before it can be deployed as a separate app.
-Agent Bricks is also not connected yet. Replace the classifier implementation
-in `app/classifier.py` with a call to a deployed agent while preserving the
-`Classification` fields (`category`, `priority`, and `suggested_fix`).
+The app's `postgres` resource must be attached to a Lakebase database, and its
+`AGENT_APP_NAME` must identify a deployed Agent Bricks app accessible to the
+Databricks App identity. The deployed `app.yaml` selects Agent Bricks
+classification. For local development, `CLASSIFIER_MODE` can be `mock` (no
+external model calls) or `anthropic` (requires `ANTHROPIC_API_KEY`).
+
+After deployment, open the app's base URL, submit a test ticket, and view it
+in **Ticket Queue**. If the classifier is temporarily unavailable, the ticket
+stays `new` and the worker retries it on a later poll.
 
 ## Notes & trade-offs
 
@@ -147,7 +152,9 @@ in `app/classifier.py` with a call to a deployed agent while preserving the
 - **Worker as a daemon thread** keeps the prototype to one process. For
   production, `run_worker.py` runs it standalone, and on Databricks this
    becomes a scheduled job. The classification logic is identical either way.
-- **Classification failures are swallowed** by `classify_ticket_safe()` so a
-  transient API error never kills the worker; the ticket stays `new` and is
-  retried on the next poll.
-- **No auth** — this is a local prototype. Add authentication before deploying.
+- **Classification failures** are logged per ticket; the ticket stays `new`
+  and is retried on a later worker poll.
+- **Authorization** — Databricks Apps protects access to the app, but the
+  ticket API does not provide per-user roles. Anyone allowed into the app can
+  view tickets and use staff actions; add application-level authorization if
+  employees and IT staff need different permissions.

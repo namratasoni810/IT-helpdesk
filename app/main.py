@@ -69,7 +69,12 @@ class ResolveRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "mock_mode": get_settings().mock_mode}
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "mock_mode": settings.classifier_mode == "mock",
+        "classifier_mode": settings.classifier_mode,
+    }
 
 
 @app.post("/tickets", response_model=TicketOut, status_code=201)

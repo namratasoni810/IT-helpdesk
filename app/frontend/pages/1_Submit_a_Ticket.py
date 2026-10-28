@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from app.config import get_settings  # noqa: E402
 
 settings = get_settings()
-API_BASE = f"http://localhost:{settings.api_port}"
+API_BASE = settings.api_base_url
 
 
 st.set_page_config(page_title="Submit a Ticket", page_icon="📝", layout="wide")
